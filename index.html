@@ -225,7 +225,7 @@ class: center, middle
 
 ---
 
-## Halide
+## Halide (1/2)
 
 A domain-specific language for image processing and computational photography embedded in C++: http://halide-lang.org
 
@@ -251,6 +251,40 @@ Func blur_3x3(Func input) {
 }
 ```
 A `Func` object represents a pipeline stage, a "computed image": a pure function defining the value of each pixel.
+
+---
+
+## Halide (2/2)
+
+Single-stage imaging pipeline that outputs a grayscale diagonal gradient:
+```cpp
+#include <Halide.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+
+    Halide::Func gradient;
+    Halide::Var x, y;
+    Halide::Expr e = x + y;
+
+    gradient(x, y) = e;
+
+    Halide::Image<int32_t> output = gradient.realize(800, 600);
+
+    for (int j = 0; j < output.height(); j++) {
+        for (int i = 0; i < output.width(); i++) {
+            if (output(i, j) != i + j) {
+                printf("Something went wrong!\n"
+                       "Pixel %d, %d was supposed to be %d, but instead it's %d\n",
+                       i, j, i+j, output(i, j));
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+```
 
 ---
 
