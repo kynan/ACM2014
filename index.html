@@ -418,20 +418,28 @@ op2.par_loop(kernel, iteration_set,
              kernel_argN(mapping[index], access_mode))
 ```
 
-### PyOP2 kernel for re-normalising a vector field
-*Direct loop*: Accessed via *identity mapping*
+### PyOP2 programme for computing the midpoint of a triangle
 ```python
-vec_norm = op2.Kernel("""
-void vec_norm(double *u)
-{
-  const double n = sqrt(u[0] * u[0] + u[1] * u[1]);
-  u[0] /= n;
-  u[1] /= n;
-}
-""", "vec_norm")
+from pyop2 import op2
+op2.init()
 
-op2.par_loop(vec_norm, nodes,
-             u(op2.IdentityMap, op2.RW))
+vertices = op2.Set(num_vertices)
+cells = op2.Set(num_cells)
+
+cell2vertex = op2.Map(cells, vertices, 3, [...])
+
+coordinates = op2.Dat(vertices ** 2, [...], dtype=float)
+midpoints = op2.Dat(cells ** 2, dtype=float)
+
+midpoint = op2.Kernel("""
+void midpoint(double p[2], double *coords[2]) {
+  p[0] = (coords[0][0] + coords[1][0] + coords[2][0]) / 3.0;
+  p[1] = (coords[0][1] + coords[1][1] + coords[2][1]) / 3.0;
+}""", "midpoint")
+
+op2.par_loop(midpoint, cells,
+             midpoints(op2.WRITE),
+             coordinates(op2.READ, cell2vertex))
 ```
 Future work: define kernels as Python functions
 ]
@@ -443,6 +451,75 @@ Future work: define kernels as Python functions
 * Runtime code generation and JIT compilation
 
 ![PyOP2 implementation](images/pyop2.svg)
+
+---
+
+## Generated sequential code calling the midpoint kernel
+
+```c
+void wrap_midpoint__(PyObject *_start, PyObject *_end,
+                     PyObject *_arg0_0,
+                     PyObject *_arg1_0, PyObject *_arg1_0_map0_0) {
+  int start = (int)PyInt_AsLong(_start);
+  int end = (int)PyInt_AsLong(_end);
+  double *arg0_0 = (double *)(((PyArrayObject *)_arg0_0)->data);
+  double *arg1_0 = (double *)(((PyArrayObject *)_arg1_0)->data);
+  int *arg1_0_map0_0 = (int *)(((PyArrayObject *)_arg1_0_map0_0)->data);
+  double *arg1_0_vec[3];
+  for ( int n = start; n < end; n++ ) {
+    int i = n;
+    arg1_0_vec[0] = arg1_0 + arg1_0_map0_0[i * 3 + 0] * 2;
+    arg1_0_vec[1] = arg1_0 + arg1_0_map0_0[i * 3 + 1] * 2;
+    arg1_0_vec[2] = arg1_0 + arg1_0_map0_0[i * 3 + 2] * 2;
+    midpoint(arg0_0 + i * 2, arg1_0_vec);
+  }
+}
+```
+
+## Generated OpenMP code calling the midpoint kernel
+
+next slide
+
+---
+
+```c
+void wrap_midpoint__(PyObject* _boffset, PyObject* _nblocks,
+                     PyObject* _blkmap, PyObject* _offset,
+                     PyObject* _nelems, PyObject *_arg0_0,
+                     PyObject *_arg1_0, PyObject *_arg1_0_map0_0) {
+  int boffset = (int)PyInt_AsLong(_boffset);
+  int nblocks = (int)PyInt_AsLong(_nblocks);
+  int* blkmap = (int *)(((PyArrayObject *)_blkmap)->data);
+  int* offset = (int *)(((PyArrayObject *)_offset)->data);
+  int* nelems = (int *)(((PyArrayObject *)_nelems)->data);
+  double *arg0_0 = (double *)(((PyArrayObject *)_arg0_0)->data);
+  double *arg1_0 = (double *)(((PyArrayObject *)_arg1_0)->data);
+  int *arg1_0_map0_0 = (int *)(((PyArrayObject *)_arg1_0_map0_0)->data);
+  double *arg1_0_vec[32][3];
+  #ifdef _OPENMP
+  int nthread = omp_get_max_threads();
+  #else
+  int nthread = 1;
+  #endif
+  #pragma omp parallel shared(boffset, nblocks, nelems, blkmap) {
+    int tid = omp_get_thread_num();
+    #pragma omp for schedule(static)
+    for (int __b = boffset; __b < boffset + nblocks; __b++) {
+      int bid = blkmap[__b];
+      int nelem = nelems[bid];
+      int efirst = offset[bid];
+      for (int n = efirst; n < efirst+ nelem; n++ ) {
+        int i = n;
+        arg1_0_vec[tid][0] = arg1_0 + arg1_0_map0_0[i * 3 + 0] * 2;
+        arg1_0_vec[tid][1] = arg1_0 + arg1_0_map0_0[i * 3 + 1] * 2;
+        arg1_0_vec[tid][2] = arg1_0 + arg1_0_map0_0[i * 3 + 2] * 2;
+        midpoint(arg0_0 + i * 2, arg1_0_vec[tid]);
+      }
+    }
+  }
+}
+
+```
 
 ---
 
