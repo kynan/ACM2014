@@ -660,19 +660,18 @@ void kernel(double A[1][1], double *x[2],
 
 Solving the Helmholtz equation in Python using Firedrake:
 ```python
-import firedrake as fd
-from firedrake.ufl import *
+from firedrake import *
 
 # Read a mesh and define a function space
-mesh = fd.Mesh('filename')
-V = fd.FunctionSpace(mesh, "Lagrange", 1)
+mesh = Mesh('filename')
+V = FunctionSpace(mesh, "Lagrange", 1)
 
 # Define forcing function for right-hand side
 def force(X):
     lmbda = 1
     n = 8
     return - (lmbda + 2*(n**2)*pi**2) * sin(X[0]*pi*n) * sin(X[1]*pi*n)
-f = fd.Expression(force)
+f = Expression(force)
 
 # Set up the Finite-element weak forms
 u = TrialFunction(V)
@@ -684,14 +683,14 @@ L = v * f * dx
 
 # Solve the resulting finite-element equation
 p = Function(V)
-fd.solve(a == L, p)
+solve(a == L, p)
 ```
 
 ---
 
 ## Finite element assembly and solve in Firedrake
 
-What goes on behind the scenes of the `fd.solve` call (simplified example!):
+What goes on behind the scenes of the `solve` call (simplified example!):
 ```python
 from pyop2 import op2, ffc_interface
 
@@ -709,13 +708,13 @@ def solve(equation, x):
     b = op2.Dat(nodes, np.zeros(nodes.size))
 
     # Assemble lhs, rhs and solve linear system
-    op2.par_loop(lhs, elements(3,3),
-                 mat((elem_node[op2.i[0]], elem_node[op2.i[1]]), op2.INC),
-                 coords(elem_node, op2.READ))
-    op2.par_loop(rhs, elements(3),
-                 b(elem_node[op2.i[0]], op2.INC),
-                 coords(elem_node, op2.READ),
-                 f(elem_node, op2.READ))
+    op2.par_loop(lhs, elements,
+                 mat(op2.INC, (elem_node[op2.i[0]], elem_node[op2.i[1]])),
+                 coords(op2.READ, elem_node))
+    op2.par_loop(rhs, elements,
+                 b(op2.INC, elem_node[op2.i[0]]),
+                 coords(op2.READ, elem_node),
+                 f(op2.READ, elem_node))
 
     # Solve the assembled sparse linear system of equations
     op2.solve(mat, x, b)
