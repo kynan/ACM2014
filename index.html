@@ -250,7 +250,7 @@ A domain-specific language for image processing and computational photography em
   * Compiler targets: x86/SSE, ARM v7/NEON, CUDA, Native Client, and OpenCL
 
 Schedule for a 3x3 box filter defined as a series of two 3x1 passes:
-```c
+```cpp
 Func blur_3x3(Func input) {
   Func blur_x, blur_y;
   Var x, y, xi, yi;
@@ -280,26 +280,26 @@ Single-stage imaging pipeline that outputs a grayscale diagonal gradient:
 
 int main(int argc, char **argv) {
 
-    Halide::Func gradient;
-    Halide::Var x, y;
-    Halide::Expr e = x + y;
+  Halide::Func gradient;
+  Halide::Var x, y;
+  Halide::Expr e = x + y;
 
-    gradient(x, y) = e;
+  gradient(x, y) = e;
 
-    Halide::Image<int32_t> output = gradient.realize(800, 600);
+  Halide::Image<int32_t> output = gradient.realize(800, 600);
 
-    for (int j = 0; j < output.height(); j++) {
-        for (int i = 0; i < output.width(); i++) {
-            if (output(i, j) != i + j) {
-                printf("Something went wrong!\n"
-                       "Pixel %d, %d was supposed to be %d, but instead it's %d\n",
-                       i, j, i+j, output(i, j));
-                return -1;
-            }
-        }
+  for (int j = 0; j < output.height(); j++) {
+    for (int i = 0; i < output.width(); i++) {
+      if (output(i, j) != i + j) {
+        printf("Something went wrong!\n"
+               "Pixel %d, %d was supposed to be %d, but instead it's %d\n",
+               i, j, i+j, output(i, j));
+        return -1;
+      }
     }
+  }
 
-    return 0;
+  return 0;
 }
 ```
 
@@ -376,12 +376,15 @@ class: center, middle
 
 ## Structure of scientific computations on unstructured meshes
 
-* *Local operations* for each element of the mesh described as a *kernel*.
-* *Reductions* aggregating results from local operations to produce final result.
+* Independent *local operations* for each element of the mesh described as a *kernel*.
+* *Reductions* aggregating results from local operations to produce the final result.
 
 ## PyOP2
 
-A domain-specific language embedded in Python for parallel computations on unstructured meshes or graphs
+A domain-specific language embedded in Python for parallel computations on unstructured meshes or graphs.
+
+### Unstructured meshes
+Meshes are described by *sets* and *maps* between them and can have data associated with them:
 
 ![PyOP2 mesh](images/op2_mesh.svg)
 
@@ -394,10 +397,10 @@ A domain-specific language embedded in Python for parallel computations on unstr
 * Maps – connectivity between entities in different sets
 
 ### Data
-* Dats - Defined on sets (hold pressure, temperature, etc)
+* Dats – Defined on sets (hold pressure, temperature, etc)
 
 ### Kernels
-* Executed in parallel on a set
+* Executed in parallel on a set through a parallel loop
 * Read / write / increment data accessed via maps
 
 ### Linear algebra
@@ -416,9 +419,9 @@ Performance portability for *any* unstructured mesh computations
 ### Parallel loop syntax
 ```python
 op2.par_loop(kernel, iteration_set,
-             kernel_arg1(mapping[index], access_mode),
+             kernel_arg1(access_mode, mapping[index]),
              ...,
-             kernel_argN(mapping[index], access_mode))
+             kernel_argN(access_mode, mapping[index]))
 ```
 
 ### PyOP2 programme for computing the midpoint of a triangle
@@ -470,11 +473,10 @@ void wrap_midpoint__(PyObject *_start, PyObject *_end,
   int *arg1_0_map0_0 = (int *)(((PyArrayObject *)_arg1_0_map0_0)->data);
   double *arg1_0_vec[3];
   for ( int n = start; n < end; n++ ) {
-    int i = n;
-    arg1_0_vec[0] = arg1_0 + arg1_0_map0_0[i * 3 + 0] * 2;
-    arg1_0_vec[1] = arg1_0 + arg1_0_map0_0[i * 3 + 1] * 2;
-    arg1_0_vec[2] = arg1_0 + arg1_0_map0_0[i * 3 + 2] * 2;
-    midpoint(arg0_0 + i * 2, arg1_0_vec);
+    arg1_0_vec[0] = arg1_0 + arg1_0_map0_0[n * 3 + 0] * 2;
+    arg1_0_vec[1] = arg1_0 + arg1_0_map0_0[n * 3 + 1] * 2;
+    arg1_0_vec[2] = arg1_0 + arg1_0_map0_0[n * 3 + 2] * 2;
+    midpoint(arg0_0 + n * 2, arg1_0_vec);
   }
 }
 ```
@@ -512,11 +514,10 @@ void wrap_midpoint__(PyObject* _boffset, PyObject* _nblocks,
       int nelem = nelems[bid];
       int efirst = offset[bid];
       for (int n = efirst; n < efirst+ nelem; n++ ) {
-        int i = n;
-        arg1_0_vec[tid][0] = arg1_0 + arg1_0_map0_0[i * 3 + 0] * 2;
-        arg1_0_vec[tid][1] = arg1_0 + arg1_0_map0_0[i * 3 + 1] * 2;
-        arg1_0_vec[tid][2] = arg1_0 + arg1_0_map0_0[i * 3 + 2] * 2;
-        midpoint(arg0_0 + i * 2, arg1_0_vec[tid]);
+        arg1_0_vec[tid][0] = arg1_0 + arg1_0_map0_0[n * 3 + 0] * 2;
+        arg1_0_vec[tid][1] = arg1_0 + arg1_0_map0_0[n * 3 + 1] * 2;
+        arg1_0_vec[tid][2] = arg1_0 + arg1_0_map0_0[n * 3 + 2] * 2;
+        midpoint(arg0_0 + n * 2, arg1_0_vec[tid]);
       }
     }
   }
@@ -534,6 +535,7 @@ void wrap_midpoint__(PyObject* _boffset, PyObject* _nblocks,
 
 ### Example
 
+Parallel computation executing a kernel over the edges of the mesh:
 ```python
 # Sets of nodes and edges
 nodes = op2.Set(N) # N = number of nodes
@@ -609,15 +611,15 @@ L = v * f * dx
 The [FEniCS Form Compiler](https://bitbucket.org/fenics-project/ffc) FFC compiles UFL forms to low-level code.
 ]
 .right-column[
-**Helmholtz equation**
+### Helmholtz equation
 `$$\int_\Omega \nabla v \cdot \nabla u - \lambda v u ~dV = \int_\Omega v f ~dV$$`
 
-**UFL expression**
+### UFL expression
 ```python
 a = (dot(grad(v), grad(u)) - lmbda * v * u) * dx
 ```
 
-**Generated C code**
+### Generated C code
 ```c
 // A - local tensor to assemble
 // x - local coordinates
@@ -633,9 +635,8 @@ void kernel(double A[1][1], double *x[2],
     A[0][0] += (FE0[ip][j] * FE0[ip][k] * (-1.0)
       + (((K00 * D10[ip][j] + K10 * D01[ip][j]))
         *((K00 * D10[ip][k] + K10 * D01[ip][k]))
-      + ((K01 * D10[ip][j] + K11 * D01[ip][j]))
-        *((K01 * D10[ip][k] + K11 * D01[ip][k]))
-      )) * W3[ip] * det;
+      +  ((K01 * D10[ip][j] + K11 * D01[ip][j]))
+        *((K01 * D10[ip][k] + K11 * D01[ip][k])))) * W3[ip] * det;
   }
 }
 ```
